@@ -51,12 +51,15 @@ static Adafruit_NeoPixel LEDstrip(NUM_LEDS, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800)
 static const uint32_t colorBlack = Adafruit_NeoPixel::Color(0, 0, 0);
 static const uint32_t colorRed = Adafruit_NeoPixel::Color(LUMINANCE, 0, 0); 
 static const uint32_t colorGreen = Adafruit_NeoPixel::Color(LUMINANCE/3, LUMINANCE, 0);
+static const uint32_t colorOrange = getPixelColorHsv(170, 255, LUMINANCE);
 static const uint32_t colorYellow = getPixelColorHsv(213, 255, LUMINANCE);
+static const uint32_t colorOcean = getPixelColorHsv(680, 255, LUMINANCE);
+static const uint32_t colorCyan = getPixelColorHsv(853, 255, LUMINANCE);
 
 // max hue = 256*6
-static const uint32_t colorHour = colorYellow;
-static const uint32_t colorColon = getPixelColorHsv(853, 255, LUMINANCE);
-static const uint32_t colorMinute = colorYellow;
+static const uint32_t colorHour = colorOrange;
+static const uint32_t colorColon = colorOcean;
+static const uint32_t colorMinute = colorOrange;
 
 // OTA
 BearSSL::PublicKey signPubKey(OTA_PUBKEY);

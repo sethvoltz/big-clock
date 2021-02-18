@@ -7,7 +7,7 @@
 
 #define CHAR_DASH                                 16
 
-#define LUMINANCE                                 32
+#define LUMINANCE                                 28
 
 #define MDNS_HOSTNAME                             "big-clock"
 #define CAPTIVE_PORTAL_BLINK_MS                   1000
