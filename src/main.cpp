@@ -8,6 +8,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266WebServer.h>
+#include <ArduinoOTA.h>
 #include <NTPClient.h>
 #include <TimeLib.h>
 #include <Timezone.h>
@@ -50,12 +51,18 @@ static Adafruit_NeoPixel LEDstrip(NUM_LEDS, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800)
 static const uint32_t colorBlack = Adafruit_NeoPixel::Color(0, 0, 0);
 static const uint32_t colorRed = Adafruit_NeoPixel::Color(LUMINANCE, 0, 0); 
 static const uint32_t colorGreen = Adafruit_NeoPixel::Color(LUMINANCE/3, LUMINANCE, 0);
+static const uint32_t colorYellow = getPixelColorHsv(213, 255, LUMINANCE);
 
 // max hue = 256*6
-static const uint32_t colorHour = getPixelColorHsv(213, 255, LUMINANCE);
+static const uint32_t colorHour = colorYellow;
 static const uint32_t colorColon = getPixelColorHsv(853, 255, LUMINANCE);
-static const uint32_t colorMinute = getPixelColorHsv(213, 255, LUMINANCE);
+static const uint32_t colorMinute = colorYellow;
 
+// OTA
+BearSSL::PublicKey signPubKey(OTA_PUBKEY);
+BearSSL::HashSHA256 hash;
+BearSSL::SigningVerifier sign(&signPubKey);
+bool otaInProgress = false;
 
 // =--------------------------------------------------------------------------= WiFi and Portal =--=
 
@@ -98,7 +105,7 @@ void setupPortal() {
   if (Portal.begin()) {
     Serial.printf("Portal.begin complete in %ld\n", millis() - start);
     // Serial.println("WiFi connected: " + WiFi.localIP().toString());
-    if (MDNS.begin("big-clock")) {
+    if (MDNS.begin(MDNS_HOSTNAME)) {
       MDNS.addService("http", "tcp", 80);
     }
   }
@@ -276,6 +283,32 @@ void loopDisplay() {
   }
 }
 
+void clearDisplay() {
+  LEDstrip.clear();
+  LEDstrip.show();
+}
+
+/**
+ * @brief Use the digits to create a progress bar that snakes along the display
+ *
+ * Serpentine layout starting at upper-left (index 3) across the top, down one segment, back along
+ * the middle, down to the bottom and across to the right again.
+ */
+void writeProgressBar(uint8_t percentage, uint32_t color) {
+  LEDstrip.clear();
+
+  uint8_t totalBars = sizeof(progressSegmentMap)/sizeof(progressSegmentMap[0]);
+  uint8_t numBars = (float)percentage / (100.0 / (float)(totalBars / 2));
+  for (uint8_t bar = 0; bar < numBars; bar++) {
+    writeSegment(progressSegmentMap[bar * 2], progressSegmentMap[bar * 2 + 1], color);
+  }
+
+  LEDstrip.show();
+}
+
+/**
+ * Write the same character to every digit
+ */
 void writeAllDigits(uint8_t character, uint32_t color) {
   int numDigits = sizeof(descriptors) / sizeof(descriptors[0]);
   for (uint8_t digit = 0; digit < numDigits; digit++) {
@@ -285,43 +318,52 @@ void writeAllDigits(uint8_t character, uint32_t color) {
 }
 
 /**
-* @brief Set the value for a digit.
-*
-* @param character The hex digit value to value to display
-* @param place The place value (position) to display the digit
-* @param color The color of the segment to use.
-*************************************************************************************/
+ * @brief Set the character for a digit.
+ *
+ * @param character The hex digit value to value to display.
+ * @param place The place value (position) to display the digit.
+ * @param color The color of the segment to use.
+ */
 void writeDigit(uint8_t character, uint16_t place, uint32_t color) {
   uint8_t segmentMap = font[character];
-  uint16_t startingLed = descriptors[place].startingLedNumber;
-  uint8_t ledsPerStrip = descriptors[place].ledsPerStrip;
-  uint8_t numStrips = descriptors[place].numStrips;
   
   for(uint8_t segment = 0; segment < 7; ++segment) {
-    for (uint8_t strip = 0; strip < numStrips; ++strip) {
-      uint16_t stripNum = strip % 2 ? (strip + 1) * 7 - 1 - segment : strip * 7 + segment;
-      writeSegment(startingLed + stripNum * ledsPerStrip, ledsPerStrip, segmentMap & 0x01 ? color : colorBlack);  // set to black or color depending on the font
-    }
+    writeSegment(place, segment, segmentMap & 0x01 ? color : colorBlack);
     segmentMap >>= 1;
   }
 }
 
 /**
-* @brief A utility function to set the color of a sequence of LEDs.
-*
-* @param startingLed The first LED address to set.
-* @param quantity The total number of LEDs in the consecutive sequence to set.
-* @param color The color value to which the LEDs will be set.
-*************************************************************************************/
-void writeSegment(uint16_t startingLed, uint16_t quantity, uint32_t color) {
-  uint16_t last = startingLed + quantity;
-  
-  while (startingLed < last) {
-    LEDstrip.setPixelColor(startingLed, color);
-    ++startingLed;
+ * @brief A utility function to light an individual segment of one digit
+ *
+ * @param place The digit to control.
+ * @param segment The segment of the digit to light.
+ * @param color The color value to which the LEDs will be set.
+ */
+void writeSegment(uint16_t place, uint8_t segment, uint32_t color) {
+  uint16_t startingLed = descriptors[place].startingLedNumber;
+  uint8_t ledsPerStrip = descriptors[place].ledsPerStrip;
+  uint8_t numStrips = descriptors[place].numStrips;
+
+  for (uint8_t strip = 0; strip < numStrips; ++strip) {
+    uint16_t stripNum = strip % 2 ? (strip + 1) * 7 - 1 - segment : strip * 7 + segment;
+    uint16_t start = startingLed + stripNum * ledsPerStrip;
+    uint16_t last = start + ledsPerStrip;
+    
+    while (start < last) {
+      LEDstrip.setPixelColor(start, color);
+      ++start;
+    }
   }
 }
 
+/**
+ * @brief Convert an HSV color to a Neopixel compatible RGB color
+ *
+ * @param h The hue portion of the color
+ * @param s The saturation portion of the color
+ * @param v The value (brightness) portion of the color
+ */
 uint32_t getPixelColorHsv(uint16_t h, uint8_t s, uint8_t v) {
   uint8_t r, g, b;
 
@@ -469,6 +511,68 @@ void saveConfig(String timezone) {
   LittleFS.end();
 }
 
+
+// =------------------------------------------------------------------------------= OTA Updates =--=
+
+void setupOTA() {
+  ArduinoOTA.setPort(OTA_PORT);
+  ArduinoOTA.setHostname(MDNS_HOSTNAME);
+
+  // Update.installSignature( &hash, &sign );
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    otaInProgress = true;
+    clearDisplay();
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("OTA: Start updating " + type);
+  });
+
+  ArduinoOTA.onEnd([]() {
+    otaInProgress = false;
+    Serial.println("\nOTA End");
+  });
+
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    uint8_t percent = (progress / (total / 100));
+    writeProgressBar(percent, colorYellow);
+
+    Serial.printf("OTA Progress: %u%%\r", percent);
+  });
+
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("OTA: Error[%u]: ", error);
+    otaInProgress = false;
+
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("OTA: Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("OTA: Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("OTA: Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("OTA: Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("OTA: End Failed");
+      delay(2000);
+      ESP.restart(); // NTP seems to fail after OTA failures, reboot
+    }
+  });
+
+  Serial.println("OTA Setup");
+  ArduinoOTA.begin();
+}
+
+void loopOTA() {
+  ArduinoOTA.handle();
+}
+
 // =---------------------------------------------------------------------------= Setup and Loop =--=
 
 void setup() {
@@ -483,13 +587,15 @@ void setup() {
   setupFilesystem();
   setupDisplay();
   setupPortal();
+  setupOTA();
   setupClock();
 }
 
 void loop() {
   loopPortal();
+  loopOTA();
   if (WiFi.status() == WL_CONNECTED) {
-    loopDisplay();
+    if (!otaInProgress) loopDisplay();
     loopClock();
   }
 }

@@ -9,11 +9,15 @@
 
 #define LUMINANCE                                 32
 
+#define MDNS_HOSTNAME                             "big-clock"
 #define CAPTIVE_PORTAL_BLINK_MS                   1000
 #define CLOCK_UPDATE_MS                           1000
 
 #define NTP_UPDATE_MS                             10 * 60 * 1000 // interval between NTP checks
 #define NTP_RETRY_MS                              5000 // Retry connection to NTP
+
+#define OTA_PUBKEY "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtaQtsdcGeKc9FlHsOnYh\nv1g6Hdsu2+t3/m5AJeT9ZHRJXcrxBKE8SL3WFpAXW28PiW1aHvG7ZNLEgoWlF48G\nwuzoigyiKxB0le937FgV7jvkVDlRjyXN0CZyBNftLqn95LKIaUWmxrWx/a8IUj8l\nY3n7OpqK/17ip0S0UrX8CY3jCE5zf57t6fdB7OkQItJtBO6pcgwWjpwWL3Paur+X\nPn92cRaJaA6ZSheqpk01e9mRVxRUQ8G1zUCDHKyUXpMH5EwctL0ugegQKWLerxFr\nZSDvMA1x18UyrUQgu9Yirf/b3CbQfRyuY4wW5alrSDs0AYr1osegV2OsA+lJOWxJ\n2QIDAQAB\n-----END PUBLIC KEY-----"
+#define OTA_PORT                                  8266
 
 
 // =-------------------------------------------------------------------------------= Time Zones =--=
@@ -140,7 +144,8 @@ void onWifiConnect(IPAddress& ipaddr);
 uint32_t getPixelColorHsv(uint16_t h, uint8_t s, uint8_t v);
 void writeDigit(uint8_t character, uint16_t place, uint32_t color);
 void writeAllDigits(uint8_t character, uint32_t color);
-void writeSegment(uint16_t startingLed, uint16_t quantity, uint32_t color); 
+void writeSegment(uint16_t place, uint8_t segment, uint32_t color);
+void writeSegmentStrip(uint16_t startingLed, uint16_t quantity, uint32_t color); 
 
 /**
 * A 7-segment LED descriptor used to identify its starting LED address and the number of LEDs in
@@ -201,4 +206,40 @@ static const uint8_t font[] = {
   0b00001000,  // - (dash)
   0b00100000,  // _ (underscore)
   0b00001111   // º (degree)
+};
+
+/**
+ * @brief An ordered map of display segment to segment for the progress bar
+ *
+ * Segment order is as follows:
+ *
+@verbatim
+   --1--
+  |     |
+  2     0
+  |     |
+   --3--
+  |     |
+  6     4
+  |     |
+   --5--
+@endverbatim
+ *
+ * Ordered pair: place, segment.
+ */
+static const uint8_t progressSegmentMap[] = {
+  3, 1,
+  2, 1,
+  1, 1,
+  0, 1,
+  0, 0,
+  0, 3,
+  1, 3,
+  2, 3,
+  3, 3,
+  3, 6,
+  3, 5,
+  2, 5,
+  1, 5,
+  0, 5
 };
