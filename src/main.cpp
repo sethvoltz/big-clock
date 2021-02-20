@@ -19,7 +19,7 @@ Timezone_t currentTZ = TZ_LIST[0];
 bool initialTimeSync = false;
 
 // Display
-static Adafruit_NeoPixel LEDstrip(NUM_LEDS, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800);
+CRGB leds[NUM_LEDS];
 
 // OTA
 BearSSL::PublicKey signPubKey(OTA_PUBKEY);
@@ -141,7 +141,7 @@ bool loopCaptivePortal(void) {
   if (WiFi.status() != WL_CONNECTED) {
     if (millis() - updateTimer > CAPTIVE_PORTAL_BLINK_MS) {
       updateTimer = millis();
-      uint32_t color = tick ? colorRed : colorBlack;
+      CRGB color = tick ? CRGB::Red : CRGB::Black;
       writeAllDigits(CHAR_DASH, color);
       tick = !tick;
     }
@@ -151,14 +151,14 @@ bool loopCaptivePortal(void) {
 
 bool startCaptivePortal(IPAddress& ip) {
   Serial.println("Portal started, IP: " + WiFi.localIP().toString());
-  writeAllDigits(CHAR_DASH, colorRed);
+  writeAllDigits(CHAR_DASH, CRGB::Red);
 
   return true;
 }
 
 void onWifiConnect(IPAddress& ipaddr) {
   Serial.printf("WiiFi connected to %s, IP: %s\n", WiFi.SSID().c_str(), ipaddr.toString().c_str());
-  writeAllDigits(CHAR_DASH, colorGreen);
+  writeAllDigits(CHAR_DASH, CRGB::Green);
 
   if (WiFi.getMode() & WIFI_AP) {
     WiFi.softAPdisconnect(true);
@@ -215,8 +215,8 @@ void syncLocalClock() {
 // =--------------------------------------------------------------------= Seven Segment Display =--=
 
 void setupDisplay() {
-  LEDstrip.begin();
-  LEDstrip.show(); // No colors set yet.  So this will set all pixels to 'off'
+  FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.setBrightness(LUMINANCE);
 }
 
 void loopDisplay() {
@@ -234,21 +234,21 @@ void loopDisplay() {
       writeDigit(hour(t)/10, 3, colorHour);
 
       if (second(t) % 2) {
-        LEDstrip.setPixelColor(colon1, colorColon);
-        LEDstrip.setPixelColor(colon2, colorColon);
+        leds[colon1] = colorColon;
+        leds[colon2] = colorColon;
       } else {
-        LEDstrip.setPixelColor(colon1, colorBlack);
-        LEDstrip.setPixelColor(colon2, colorBlack);
+        leds[colon1] = CRGB::Black;
+        leds[colon2] = CRGB::Black;
       }
 
-      LEDstrip.show();  // Flush the settings to the LEDs
+      FastLED.show();  // Flush the settings to the LEDs
     }
   }
 }
 
 void clearDisplay() {
-  LEDstrip.clear();
-  LEDstrip.show();
+  FastLED.clear();
+  FastLED.show();
 }
 
 /**
@@ -257,8 +257,8 @@ void clearDisplay() {
  * Serpentine layout starting at upper-left (index 3) across the top, down one segment, back along
  * the middle, down to the bottom and across to the right again.
  */
-void writeProgressBar(uint8_t percentage, uint32_t color) {
-  LEDstrip.clear();
+void writeProgressBar(uint8_t percentage, CRGB color) {
+  FastLED.clear();
 
   uint8_t totalBars = sizeof(progressSegmentMap)/sizeof(progressSegmentMap[0]);
   uint8_t numBars = (float)percentage / (100.0 / (float)(totalBars / 2));
@@ -266,18 +266,18 @@ void writeProgressBar(uint8_t percentage, uint32_t color) {
     writeSegment(progressSegmentMap[bar * 2], progressSegmentMap[bar * 2 + 1], color);
   }
 
-  LEDstrip.show();
+  FastLED.show();
 }
 
 /**
  * Write the same character to every digit
  */
-void writeAllDigits(uint8_t character, uint32_t color) {
+void writeAllDigits(uint8_t character, CRGB color) {
   int numDigits = sizeof(descriptors) / sizeof(descriptors[0]);
   for (uint8_t digit = 0; digit < numDigits; digit++) {
     writeDigit(character, digit, color);
   }
-  LEDstrip.show();
+  FastLED.show();
 }
 
 /**
@@ -287,11 +287,11 @@ void writeAllDigits(uint8_t character, uint32_t color) {
  * @param place The place value (position) to display the digit.
  * @param color The color of the segment to use.
  */
-void writeDigit(uint8_t character, uint16_t place, uint32_t color) {
+void writeDigit(uint8_t character, uint16_t place, CRGB color) {
   uint8_t segmentMap = font[character];
   
   for(uint8_t segment = 0; segment < 7; ++segment) {
-    writeSegment(place, segment, segmentMap & 0x01 ? color : colorBlack);
+    writeSegment(place, segment, segmentMap & 0x01 ? color : CRGB::Black);
     segmentMap >>= 1;
   }
 }
@@ -303,7 +303,7 @@ void writeDigit(uint8_t character, uint16_t place, uint32_t color) {
  * @param segment The segment of the digit to light.
  * @param color The color value to which the LEDs will be set.
  */
-void writeSegment(uint16_t place, uint8_t segment, uint32_t color) {
+void writeSegment(uint16_t place, uint8_t segment, CRGB color) {
   uint16_t startingLed = descriptors[place].startingLedNumber;
   uint8_t ledsPerStrip = descriptors[place].ledsPerStrip;
   uint8_t numStrips = descriptors[place].numStrips;
@@ -314,7 +314,7 @@ void writeSegment(uint16_t place, uint8_t segment, uint32_t color) {
     uint16_t last = start + ledsPerStrip;
     
     while (start < last) {
-      LEDstrip.setPixelColor(start, color);
+      leds[start] = color;
       ++start;
     }
   }

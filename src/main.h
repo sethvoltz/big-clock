@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 #include <WiFiUdp.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
@@ -19,7 +19,7 @@
 
 #define CONFIG_FILE                               "/settings.json"
 
-#define LED_STRIP_PIN                             15
+#define LED_PIN                                   15
 #define NUM_LEDS                                  170  // sum of descriptors + colons
 
 #define CHAR_DASH                                 16
@@ -63,20 +63,14 @@ static const uint8_t colon1 = 84;  // the address of the first colon LED
 static const uint8_t colon2 = 85;  // the address of the second colon LED
 
 // Colors
-// max hue = 256*6
-uint32_t getPixelColorHsv(uint16_t h, uint8_t s, uint8_t v);
+static const CHSV colorOrange = CHSV( 35, 255, 255);
+static const CHSV colorYellow = CHSV( 43, 255, 255);
+static const CHSV colorOcean = CHSV( 141, 255, 255);
+static const CHSV colorCyan = CHSV( 131, 255, 255);
 
-static const uint32_t colorBlack = Adafruit_NeoPixel::Color(0, 0, 0);
-static const uint32_t colorRed = Adafruit_NeoPixel::Color(LUMINANCE, 0, 0); 
-static const uint32_t colorGreen = Adafruit_NeoPixel::Color(LUMINANCE/3, LUMINANCE, 0);
-static const uint32_t colorOrange = getPixelColorHsv(170, 255, LUMINANCE);
-static const uint32_t colorYellow = getPixelColorHsv(213, 255, LUMINANCE);
-static const uint32_t colorOcean = getPixelColorHsv(680, 255, LUMINANCE);
-static const uint32_t colorCyan = getPixelColorHsv(853, 255, LUMINANCE);
-
-static const uint32_t colorHour = colorOrange;
-static const uint32_t colorColon = colorOcean;
-static const uint32_t colorMinute = colorOrange;
+static const CHSV colorHour = colorOrange;
+static const CHSV colorColon = colorOcean;
+static const CHSV colorMinute = colorOrange;
 
 
 // =-------------------------------------------------------------------------------= Filesystem =--=
@@ -200,10 +194,10 @@ void onWifiConnect(IPAddress& ipaddr);
 
 // =--------------------------------------------------------------------= Seven Segment Display =--=
 
-void writeDigit(uint8_t character, uint16_t place, uint32_t color);
-void writeAllDigits(uint8_t character, uint32_t color);
-void writeSegment(uint16_t place, uint8_t segment, uint32_t color);
-void writeSegmentStrip(uint16_t startingLed, uint16_t quantity, uint32_t color); 
+void writeDigit(uint8_t character, uint16_t place, CRGB color);
+void writeAllDigits(uint8_t character, CRGB color);
+void writeSegment(uint16_t place, uint8_t segment, CRGB color);
+void writeSegmentStrip(uint16_t startingLed, uint16_t quantity, CRGB color); 
 
 /**
  * @brief A 7-Segment display 'font'.
@@ -288,85 +282,3 @@ static const uint8_t progressSegmentMap[] = {
   1, 5,
   0, 5
 };
-
-/**
- * @brief Convert an HSV color to a Neopixel compatible RGB color
- *
- * @param h The hue portion of the color
- * @param s The saturation portion of the color
- * @param v The value (brightness) portion of the color
- */
-uint32_t getPixelColorHsv(uint16_t h, uint8_t s, uint8_t v) {
-  uint8_t r, g, b;
-
-  if (!s) {
-    // Monochromatic, all components are V
-    r = g = b = v;
-  } else {
-    uint8_t sextant = h >> 8;
-    if (sextant > 5)
-      sextant = 5;  // Limit hue sextants to defined space
-
-    g = v; // Top level
-
-    // Perform actual calculations
-
-    /*
-       Bottom level:
-       --> (v * (255 - s) + error_corr + 1) / 256
-    */
-    uint16_t ww; // Intermediate result
-    ww = v * (uint8_t)(~s);
-    ww += 1;       // Error correction
-    ww += ww >> 8; // Error correction
-    b = ww >> 8;
-
-    uint8_t h_fraction = h & 0xff; // Position within sextant
-    uint32_t d; // Intermediate result
-
-    if (!(sextant & 1)) {
-      // r = ...slope_up...
-      // --> r = (v * ((255 << 8) - s * (256 - h)) + error_corr1 + error_corr2) / 65536
-      d = v * (uint32_t)(0xff00 - (uint16_t)(s * (256 - h_fraction)));
-      d += d >> 8;  // Error correction
-      d += v;       // Error correction
-      r = d >> 16;
-    } else {
-      // r = ...slope_down...
-      // --> r = (v * ((255 << 8) - s * h) + error_corr1 + error_corr2) / 65536
-      d = v * (uint32_t)(0xff00 - (uint16_t)(s * h_fraction));
-      d += d >> 8;  // Error correction
-      d += v;       // Error correction
-      r = d >> 16;
-    }
-
-    // Swap RGB values according to sextant. This is done in reverse order with
-    // respect to the original because the swaps are done after the
-    // assignments.
-    if (!(sextant & 6)) {
-      if (!(sextant & 1)) {
-        uint8_t tmp = r;
-        r = g;
-        g = tmp;
-      }
-    } else {
-      if (sextant & 1) {
-        uint8_t tmp = r;
-        r = g;
-        g = tmp;
-      }
-    }
-    if (sextant & 4) {
-      uint8_t tmp = g;
-      g = b;
-      b = tmp;
-    }
-    if (sextant & 2) {
-      uint8_t tmp = r;
-      r = b;
-      b = tmp;
-    }
-  }
-  return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-}
-
