@@ -48,3 +48,4 @@ While the current state of the project is sufficient to call this "done", there'
 - [ ] Config to allow spefifying NTP server
 - [ ] Config to allow setting colors
 - [ ] Animations! Go beyond the colon blinking for status and bootup
+- [ ] gCal integration? Flash n minutes before your next meeting
