@@ -41,11 +41,9 @@ Now take the public key that is in the clipboard and replace the value of `OTA_P
 While the current state of the project is sufficient to call this "done", there's always more that I'd like to do. Here's the current list which should also server as a reminder if I come back to this some time in the future looking for something to do.
 
 - [ ] Add a button to manually enter captive portal
-- [ ] Convert LED driver to FastLED
 - [ ] Automatic dimming of LED brightness based on time
 - [ ] Update config page to handle multiple values and a generic config object
 - [ ] Config to allow specifying LED dimming time and brightness levels
 - [ ] Config to allow spefifying NTP server
 - [ ] Config to allow setting colors
-- [ ] Animations! Go beyond the colon blinking for status and bootup
 - [ ] gCal integration? Flash n minutes before your next meeting

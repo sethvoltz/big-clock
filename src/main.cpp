@@ -3,13 +3,16 @@
 
 // =----------------------------------------------------------------------------------= Globals =--=
 
+// Program
+uint8_t currentProgram = 0;
+
 // Base Web Server
 ESP8266WebServer Server;
 
 // Captive Portal
 AutoConnect Portal(Server);
 AutoConnectConfig Config;
-AutoConnectAux TimezoneContainer;
+AutoConnectAux ConfigureContainer;
 bool wifiFeaturesEnabled = false;
 
 // NTP
@@ -27,6 +30,10 @@ BearSSL::HashSHA256 hash;
 BearSSL::SigningVerifier sign(&signPubKey);
 bool otaInProgress = false;
 
+// Palettes
+CRGBPalette16 currentPalette;
+
+
 // =--------------------------------------------------------------------------= WiFi and Portal =--=
 
 void setupPortal() {
@@ -37,17 +44,23 @@ void setupPortal() {
   Portal.config(Config);
 
   // Load aux. page
-  TimezoneContainer.load(PORTAL_TIMEZONE_PAGE);
+  ConfigureContainer.load(PORTAL_CONFIGURE_PAGE);
 
-  // Retrieve the select element that holds the time zone code and
-  // register the zone mnemonic in advance.
-  AutoConnectSelect& tzSelector = TimezoneContainer["timezone"].as<AutoConnectSelect>();
+  // Fill the time zone selector from config and pre-select any saved value
+  AutoConnectSelect& timezoneSelector = ConfigureContainer["timezone"].as<AutoConnectSelect>();
   for (uint8_t index = 0; index < sizeof(TZ_LIST) / sizeof(Timezone_t); index++) {
-    tzSelector.add(String(TZ_LIST[index].name));
+    timezoneSelector.add(String(TZ_LIST[index].name));
   }
-  tzSelector.select(String(currentTZ.name));
+  timezoneSelector.select(String(currentTZ.name));
 
-  Portal.join({ TimezoneContainer });        // Register aux. page
+  // Fill the program selector from config and pre-select from runtime value
+  AutoConnectSelect& programSelector = ConfigureContainer["program"].as<AutoConnectSelect>();
+  for (uint8_t index = 0; index < PROGRAM_COUNT; index++) {
+    programSelector.add(String(programNames[index]));
+  }
+  programSelector.select(String(programNames[currentProgram]));
+
+  Portal.join({ ConfigureContainer });        // Register aux. page
 
   // Behavior a root path of ESP8266WebServer.
   Server.on("/", portalRootPage);
@@ -113,8 +126,8 @@ void portalStartPage() {
   // Retrieve the value of AutoConnectElement with arg function of WebServer class.
   // Values are accessible with the element name.
   String selectedTimezone = Server.arg("timezone");
-  AutoConnectSelect& tzSelector = TimezoneContainer["timezone"].as<AutoConnectSelect>();
-  tzSelector.select(selectedTimezone);
+  AutoConnectSelect& timezoneSelector = ConfigureContainer["timezone"].as<AutoConnectSelect>();
+  timezoneSelector.select(selectedTimezone);
 
   for (uint8_t index = 0; index < sizeof(TZ_LIST) / sizeof(Timezone_t); index++) {
     String tzName = String(TZ_LIST[index].name);
@@ -122,6 +135,17 @@ void portalStartPage() {
       currentTZ = TZ_LIST[index];
       Serial.println("Selected time Zone: " + String(TZ_LIST[index].name));
       saveConfig(tzName);
+      break;
+    }
+  }
+
+  String selectedProgram = Server.arg("program");
+  AutoConnectSelect& programSelector = ConfigureContainer["program"].as<AutoConnectSelect>();
+  programSelector.select(selectedProgram);
+
+  for (size_t program = 0; program < PROGRAM_COUNT; program++) {
+    if (selectedProgram.equals(programNames[program])) {
+      setProgram(program);
       break;
     }
   }
@@ -212,43 +236,28 @@ void syncLocalClock() {
   }
 }
 
-// =--------------------------------------------------------------------= Seven Segment Display =--=
+// =----------------------------------------------------------------------------------= Display =--=
 
 void setupDisplay() {
   FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(LUMINANCE);
 }
 
-void loopDisplay() {
-  static unsigned long updateTimer = millis();
-
-  if (millis() - updateTimer > CLOCK_UPDATE_MS) {
-    updateTimer = millis();
-
-    if (initialTimeSync) {
-      time_t t = currentTZ.timezone.toLocal(now());
-
-      writeDigit(minute(t)%10, 0, colorMinute);
-      writeDigit(minute(t)/10, 1, colorMinute);
-      writeDigit(hour(t)%10, 2, colorHour);
-      writeDigit(hour(t)/10, 3, colorHour);
-
-      if (second(t) % 2) {
-        leds[colon1] = colorColon;
-        leds[colon2] = colorColon;
-      } else {
-        leds[colon1] = CRGB::Black;
-        leds[colon2] = CRGB::Black;
-      }
-
-      FastLED.show();  // Flush the settings to the LEDs
-    }
-  }
+void loopDisplay(bool first = false) {
+  (*renderFunc[currentProgram])(first);
 }
 
 void clearDisplay() {
   FastLED.clear();
   FastLED.show();
+}
+
+void setProgram(uint8_t program) {
+  if (program >= 0 && program < PROGRAM_COUNT && program != currentProgram) {
+    currentProgram = program;
+    Serial.printf("Setting program to %s\n", programNames[program]);
+    loopDisplay(true);
+  }
 }
 
 /**
@@ -317,6 +326,119 @@ void writeSegment(uint16_t place, uint8_t segment, CRGB color) {
       leds[start] = color;
       ++start;
     }
+  }
+}
+
+uint16_t XY(uint8_t x, uint8_t y) {
+  // any out of bounds address maps to the first hidden pixel
+  if ( (x >= MATRIX_WIDTH) || (y >= MATRIX_HEIGHT) ) {
+    return (LAST_VISIBLE_LED + 1);
+  }
+
+  return XYTable[(y * MATRIX_WIDTH) + x];
+}
+
+void programClock(bool first) {
+  static unsigned long updateTimer = millis();
+
+  if (first || millis() - updateTimer > CLOCK_UPDATE_MS) {
+    updateTimer = millis();
+
+    if (initialTimeSync) {
+      time_t t = currentTZ.timezone.toLocal(now());
+
+      writeDigit(minute(t)%10, 0, colorMinute);
+      writeDigit(minute(t)/10, 1, colorMinute);
+      writeDigit(hour(t)%10, 2, colorHour);
+      writeDigit(hour(t)/10, 3, colorHour);
+
+      if (second(t) % 2) {
+        leds[colon1] = colorColon;
+        leds[colon2] = colorColon;
+      } else {
+        leds[colon1] = CRGB::Black;
+        leds[colon2] = CRGB::Black;
+      }
+
+      FastLED.show();  // Flush the settings to the LEDs
+    }
+  }
+}
+
+void programMatrix(bool first) {
+  static unsigned long updateTimer = millis();
+
+  if (first || millis() - updateTimer > ANIMATION_UPDATE_MS) {
+    updateTimer = millis();
+
+    // Move code downward
+    // Start with lowest row to allow proper overlapping on each column
+    for (int8_t row = MATRIX_HEIGHT - 1; row >= 0; row--) {
+      for (int8_t col = 0; col < MATRIX_WIDTH; col++) {
+        if (leds[XY(col, row)] == CRGB(175, 255, 175)) {
+          leds[XY(col, row)] = CRGB(27, 130, 39); // create trail
+          if (row < MATRIX_HEIGHT - 1) leds[XY(col, row + 1)] = CRGB(175, 255, 175);
+        }
+      }
+    }
+
+    // fade all leds
+    for(int i = 0; i < NUM_LEDS; i++) {
+      if (leds[i].g != 255) leds[i].nscale8(192); // only fade trail
+    }
+
+    // check for empty screen to ensure code spawn
+    bool emptyScreen = true;
+    for(int i = 0; i < NUM_LEDS; i++) {
+      if (leds[i]) {
+        emptyScreen = false;
+        break;
+      }
+    }
+
+    // spawn new falling code
+    if (random8(3) == 0 || emptyScreen) { // lower number == more frequent spawns
+      int8_t spawnX = random8(MATRIX_WIDTH);
+      leds[XY(spawnX, 0)] = CRGB(175, 255, 175);
+    }
+
+    FastLED.show();
+  }
+}
+
+void programRainbow(bool first) {
+  static unsigned long updateTimer = millis();
+  static uint8_t hueOffset = 0;
+
+  if (first || millis() - updateTimer > ANIMATION_UPDATE_MS) {
+    updateTimer = millis();
+
+    for (uint8_t col = 0; col < MATRIX_WIDTH; col++) {
+      CHSV color = CHSV(hueOffset + col, 255, 255);
+      for (uint8_t row = 0; row < MATRIX_HEIGHT; row++) {
+        leds[XY(col, row)] = color;
+      }
+    }
+
+    hueOffset++;
+    FastLED.show();
+  }
+}
+
+void programFire(bool first) {
+  static unsigned long updateTimer = millis();
+  if (first) currentPalette = HeatColors_p;
+
+  if (first || millis() - updateTimer > ANIMATION_UPDATE_MS) {
+    updateTimer = millis();
+
+    for (int i = 0; i < MATRIX_WIDTH; i++) {
+      for (int j = 0; j < MATRIX_HEIGHT; j++) {
+        leds[XY(i, j)] = ColorFromPalette(currentPalette, qsub8(inoise8(i * 60, j * 60 + updateTimer, updateTimer / 3),
+        abs8(j - (MATRIX_HEIGHT - 1)) * 255 / (MATRIX_HEIGHT - 1)), 255);
+      }
+    }
+    FastLED.show();
   }
 }
 

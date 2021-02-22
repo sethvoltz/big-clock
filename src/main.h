@@ -20,7 +20,12 @@
 #define CONFIG_FILE                               "/settings.json"
 
 #define LED_PIN                                   15
-#define NUM_LEDS                                  170  // sum of descriptors + colons
+#define MATRIX_WIDTH                              29
+#define MATRIX_HEIGHT                             12
+#define NUM_LEDS                                  (MATRIX_WIDTH * MATRIX_HEIGHT)
+#define LAST_VISIBLE_LED                          347
+#define CLOCK_UPDATE_MS                           1000
+#define ANIMATION_UPDATE_MS                       66 // 15fps
 
 #define CHAR_DASH                                 16
 
@@ -28,7 +33,6 @@
 
 #define MDNS_HOSTNAME                             "big-clock"
 #define CAPTIVE_PORTAL_BLINK_MS                   1000
-#define CLOCK_UPDATE_MS                           1000
 
 #define NTP_UPDATE_MS                             10 * 60 * 1000 // interval between NTP checks
 #define NTP_RETRY_MS                              5000 // Retry connection to NTP
@@ -42,13 +46,11 @@
 /**
 * A 7-segment LED descriptor used to identify its starting LED address and the number of LEDs in
 * the digit.
-*
-* @warning Change the data types to uint16_t if you have more than 256 LEDs.
 */
 struct ledDescriptor_t {
-  uint8_t startingLedNumber;    // the address of the first LED in a digit
-  uint8_t numStrips;            // number of strips per segment
-  uint8_t ledsPerStrip;         // number of LEDs per strip
+  uint16_t startingLedNumber;   // the address of the first LED in a digit
+  uint8_t  numStrips;            // number of strips per segment
+  uint8_t  ledsPerStrip;         // number of LEDs per strip
 };
 
 // Display Layout and Pixels
@@ -59,19 +61,65 @@ static struct ledDescriptor_t descriptors[] = {
   {128, 2, 3}  // X_:__
 };
 
-static const uint8_t colon1 = 84;  // the address of the first colon LED
-static const uint8_t colon2 = 85;  // the address of the second colon LED
+static const uint16_t colon1 = 84;  // the address of the first colon LED
+static const uint16_t colon2 = 85;  // the address of the second colon LED
+
+// Matrix mapping
+/**
+ * @brief X-Y Matrix to LED strip mapping table
+ *
+ * This crazy thing let's us map a full X-Y matrix to the actual clock pixels. We use a full matrix
+ * instead of the strip array + safety pixel so we can use animations that rely on surrounding pixel
+ * data and copying from previous frames.
+ */
+static const uint16_t XYTable[] = {
+  170, 171, 133, 132, 131, 172, 173, 174, 175,  91,  90,  89, 176, 177, 178, 179, 180,  47,  46,  45, 181, 182, 183, 184,   5,   4,   3, 185, 186,
+  187, 188, 164, 165, 166, 189, 190, 191, 192, 122, 123, 124, 193, 194, 195, 196, 197,  78,  79,  80, 198, 199, 200, 201,  36,  37,  38, 202, 203,
+  134, 163, 204, 205, 206, 167, 130,  92, 121, 207, 208, 209, 125,  88, 210,  48,  77, 211, 212, 213,  81,  44,   6,  35, 214, 215, 216,  39,   2,
+  135, 162, 217, 218, 219, 168, 129,  93, 120, 220, 221, 222, 126,  87,  84,  49,  76, 223, 224, 225,  82,  43,   7,  34, 226, 227, 228,  40,   1,
+  136, 161, 229, 230, 231, 169, 128,  94, 119, 232, 233, 234, 127,  86, 235,  50,  75, 236, 237, 238,  83,  42,   8,  33, 239, 240, 241,  41,   0,
+  242, 243, 160, 159, 158, 244, 245, 246, 247, 118, 117, 116, 248, 249, 250, 251, 252,  74,  73,  72, 253, 254, 255, 256,  32,  31,  30, 257, 258,
+  259, 260, 137, 138, 139, 261, 262, 263, 264,  95,  96,  97, 265, 266, 267, 268, 269,  51,  52,  53, 270, 271, 272, 273,   9,  10,  11, 274, 275,
+  149, 148, 276, 277, 278, 140, 157, 107, 106, 179, 280, 281,  98, 115, 282,  63,  62, 283, 284, 285,  54,  71,  21,  20, 286, 287, 288,  12,  29,
+  150, 147, 289, 290, 291, 141, 156, 108, 105, 292, 293, 294,  99, 114,  85,  64,  61, 295, 296, 297,  55,  70,  22,  19, 298, 299, 300,  13,  28,
+  151, 146, 301, 302, 303, 142, 155, 109, 104, 304, 305, 306, 100, 113, 307,  65,  60, 308, 309, 310,  56,  69,  23,  18, 311, 312, 313,  14,  27,
+  314, 315, 145, 144, 143, 316, 317, 318, 319, 103, 102, 101, 320, 321, 322, 323, 324,  59,  58,  57, 325, 326, 327, 328,  17,  16,  15, 329, 330,
+  331, 332, 152, 153, 154, 333, 334, 335, 336, 110, 111, 112, 337, 338, 339, 340, 341,  66,  67,  68, 342, 343, 344, 345,  24,  25,  26, 346, 347
+};
 
 // Colors
 static const CHSV colorOrange = CHSV( 35, 255, 255);
 static const CHSV colorYellow = CHSV( 43, 255, 255);
-static const CHSV colorOcean = CHSV( 141, 255, 255);
-static const CHSV colorCyan = CHSV( 131, 255, 255);
+static const CHSV colorOcean  = CHSV(141, 255, 255);
+static const CHSV colorCyan   = CHSV(131, 255, 255);
 
-static const CHSV colorHour = colorOrange;
-static const CHSV colorColon = colorOcean;
+static const CHSV colorHour   = colorOrange;
+static const CHSV colorColon  = colorOcean;
 static const CHSV colorMinute = colorOrange;
 
+
+// =---------------------------------------------------------------------------------= Programs =--=
+
+void setProgram(uint8_t program);
+void programClock(bool first);
+void programMatrix(bool first);
+void programRainbow(bool first);
+void programFire(bool first);
+
+void (*renderFunc[])(bool first) {
+  programClock,
+  programMatrix,
+  programRainbow,
+  programFire
+};
+#define PROGRAM_COUNT (sizeof(renderFunc) / sizeof(renderFunc[0]))
+
+const char *programNames[] = {
+  "clock",
+  "matrix",
+  "rainbow",
+  "fire"
+};
 
 // =-------------------------------------------------------------------------------= Filesystem =--=
 
@@ -143,24 +191,34 @@ static const Timezone_t TZ_LIST[] = {
 
 // =---------------------------------------------------------------------------= Captive Portal =--=
 
-static const char PORTAL_TIMEZONE_PAGE[] PROGMEM = R"(
+static const char PORTAL_CONFIGURE_PAGE[] PROGMEM = R"(
 {
-  "title": "TimeZone",
-  "uri": "/timezone",
+  "title": "Configure",
+  "uri": "/config",
   "menu": true,
   "element": [
     {
       "name": "caption",
       "type": "ACText",
-      "value": "Select local time zone for clock display",
+      "value": "Set options for the big clock",
       "style": "font-family:Arial;font-weight:bold;text-align:center;margin-bottom:10px;color:DarkSlateBlue"
     },
     {
       "name": "timezone",
       "type": "ACSelect",
       "label": "Time Zone",
-      "option": [],
-      "selected": 10
+      "option": []
+    },
+    {
+      "name": "newline",
+      "type": "ACElement",
+      "value": "<br>"
+    },
+    {
+      "name": "program",
+      "type": "ACSelect",
+      "label": "Program",
+      "option": []
     },
     {
       "name": "newline",
