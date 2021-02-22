@@ -129,6 +129,29 @@ void saveConfig(String timezone);
 
 // =-------------------------------------------------------------------------------= Time Zones =--=
 
+// New Zealand Time Zone
+TimeChangeRule tzNewZealandSTD = {"NZST", First, Sun, Apr, 3, 720};   // UTC + 12 hours
+TimeChangeRule tzNewZealandDST = {"NZDT", Last, Sun, Sep, 2, 780};    // UTC + 13 hours
+Timezone tzNewZealand(tzNewZealandDST, tzNewZealandSTD);
+
+// Australia Eastern Time Zone (Sydney, Melbourne)
+TimeChangeRule tzAustraliaEDT = {"AEDT", First, Sun, Oct, 2, 660};
+TimeChangeRule tzAustraliaEST = {"AEST", First, Sun, Apr, 3, 600};
+Timezone tzAustraliaET(tzAustraliaEDT, tzAustraliaEST);
+
+// Moscow Standard Time (MSK, does not observe DST)
+TimeChangeRule tzEuropeMoscow = {"MSK", Last, Sun, Mar, 1, 180};
+Timezone tzEuropeMSK(tzEuropeMoscow);
+
+// United Kingdom (London, Belfast)
+TimeChangeRule tzEuropeBST = {"BST", Last, Sun, Mar, 1, 60};
+TimeChangeRule tzEuropeGMT = {"GMT", Last, Sun, Oct, 2, 0};
+Timezone tzEuropeUK(tzEuropeBST, tzEuropeGMT);
+
+// UTC
+TimeChangeRule utcRule = {"UTC", Last, Sun, Mar, 1, 0};
+Timezone tzUTC(utcRule);
+
 // US Eastern Time Zone (New York, Detroit)
 TimeChangeRule tzAmericaEDT = {"EDT", Second, Sun, Mar, 2, -240};
 TimeChangeRule tzAmericaEST = {"EST", First, Sun, Nov, 2, -300};
@@ -164,19 +187,20 @@ typedef struct {
  * Complete listing of timezones that can be selected in the portal UI
  */
 static const Timezone_t TZ_LIST[] = {
-  // { "Europe/London", 0 },
-  // { "Europe/Berlin", 1 },
-  // { "Europe/Helsinki", 2 },
-  // { "Europe/Moscow", 3 },
-  // { "Asia/Dubai", 4 },
-  // { "Asia/Karachi", 5 },
-  // { "Asia/Dhaka", 6 },
-  // { "Asia/Jakarta", 7 },
-  // { "Asia/Manila", 8 },
-  // { "Asia/Tokyo", 9 },
-  // { "Australia/Brisbane", 10 },
+  { "Pacific/New Zealand", tzNewZealand },
   // { "Pacific/Noumea", 11 },
-  // { "Pacific/Auckland", 12 },
+  { "Australia/Sydney", tzAustraliaET },
+  // { "Asia/Tokyo", 9 },
+  // { "Asia/Manila", 8 },
+  // { "Asia/Jakarta", 7 },
+  // { "Asia/Dhaka", 6 },
+  // { "Asia/Karachi", 5 },
+  // { "Asia/Dubai", 4 },
+  { "Europe/Moscow", tzEuropeMSK },
+  // { "Europe/Helsinki", 2 },
+  // { "Europe/Berlin", 1 },
+  { "UTC", tzUTC },
+  { "Europe/London", tzEuropeUK },
   // { "Atlantic/Azores", -1 },
   // { "America/Noronha", -2 },
   // { "America/Araguaina", -3 },
