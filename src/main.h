@@ -88,14 +88,15 @@ static const uint16_t XYTable[] = {
 };
 
 // Colors
-static const CHSV colorOrange = CHSV( 35, 255, 255);
-static const CHSV colorYellow = CHSV( 43, 255, 255);
-static const CHSV colorOcean  = CHSV(141, 255, 255);
-static const CHSV colorCyan   = CHSV(131, 255, 255);
+static const CHSV colorOrange           = CHSV( 35, 255, 255);
+static const CHSV colorBeige            = CHSV( 35, 200, 255);
+static const CHSV colorYellow           = CHSV( 43, 255, 255);
+static const CHSV colorOcean            = CHSV(141, 255, 255);
+static const CHSV colorCyan             = CHSV(131, 255, 255);
 
-static const CHSV colorHour   = colorOrange;
-static const CHSV colorColon  = colorOcean;
-static const CHSV colorMinute = colorOrange;
+static const CHSV colorHour             = colorBeige;
+static const CHSV colorColon            = colorOcean;
+static const CHSV colorMinute           = colorBeige;
 
 
 // =---------------------------------------------------------------------------------= Programs =--=
@@ -105,12 +106,14 @@ void programClock(bool first);
 void programMatrix(bool first);
 void programRainbow(bool first);
 void programFire(bool first);
+void programPlasma(bool first);
 
 void (*renderFunc[])(bool first) {
   programClock,
   programMatrix,
   programRainbow,
-  programFire
+  programFire,
+  programPlasma
 };
 #define PROGRAM_COUNT (sizeof(renderFunc) / sizeof(renderFunc[0]))
 
@@ -118,7 +121,8 @@ const char *programNames[] = {
   "clock",
   "matrix",
   "rainbow",
-  "fire"
+  "fire",
+  "plasma"
 };
 
 // =-------------------------------------------------------------------------------= Filesystem =--=

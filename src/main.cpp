@@ -260,6 +260,26 @@ void setProgram(uint8_t program) {
   }
 }
 
+void surpriseAndDelight() {
+  static unsigned long updateTimer = millis();
+
+  if (millis() - updateTimer > 1000) {
+    updateTimer = millis();
+
+    time_t t = currentTZ.timezone.toLocal(now());
+    if (minute(t) == 0) {
+      // Top o' the hour, let's throw an animation in for a few seconds
+      if (currentProgram == 0 && second(t) < 10) {
+        // We're on the clock, switch to a random one
+        setProgram(random(1, PROGRAM_COUNT - 1));
+      } else if (second(t) > 10) {
+        // Time's up, go back to clock
+        setProgram(0);
+      }
+    }
+  }
+}
+
 /**
  * @brief Use the digits to create a progress bar that snakes along the display
  *
@@ -347,10 +367,10 @@ void programClock(bool first) {
     if (initialTimeSync) {
       time_t t = currentTZ.timezone.toLocal(now());
 
-      writeDigit(minute(t)%10, 0, colorMinute);
-      writeDigit(minute(t)/10, 1, colorMinute);
-      writeDigit(hour(t)%10, 2, colorHour);
-      writeDigit(hour(t)/10, 3, colorHour);
+      writeDigit(minute(t) % 10, 0, colorMinute);
+      writeDigit(minute(t) / 10, 1, colorMinute);
+      writeDigit(hour(t) % 10, 2, colorHour);
+      writeDigit(hour(t) / 10, 3, colorHour);
 
       if (second(t) % 2) {
         leds[colon1] = colorColon;
@@ -408,19 +428,27 @@ void programMatrix(bool first) {
 
 void programRainbow(bool first) {
   static unsigned long updateTimer = millis();
-  static uint8_t hueOffset = 0;
 
   if (first || millis() - updateTimer > ANIMATION_UPDATE_MS) {
     updateTimer = millis();
 
-    for (uint8_t col = 0; col < MATRIX_WIDTH; col++) {
-      CHSV color = CHSV(hueOffset + col, 255, 255);
-      for (uint8_t row = 0; row < MATRIX_HEIGHT; row++) {
-        leds[XY(col, row)] = color;
+    int32_t yHueDelta32 = ((int32_t) cos16(updateTimer * (27 / 3)) * (350 / MATRIX_WIDTH));
+    int32_t xHueDelta32 = ((int32_t) cos16(updateTimer * (39 / 3)) * (310 / MATRIX_HEIGHT));
+
+    byte startHue8 = updateTimer / 65536;
+    int8_t yHueDelta8 = yHueDelta32 / 32768;
+    int8_t xHueDelta8 = xHueDelta32 / 32768;
+
+    byte lineStartHue = startHue8;
+    for (byte y = 0; y < MATRIX_HEIGHT; y++) {
+      lineStartHue += yHueDelta8;
+      byte pixelHue = lineStartHue;
+      for (byte x = 0; x < MATRIX_WIDTH; x++) {
+        pixelHue += xHueDelta8;
+        leds[XY(x, y)] = CHSV(pixelHue, 255, 255);
       }
     }
 
-    hueOffset++;
     FastLED.show();
   }
 }
@@ -438,6 +466,32 @@ void programFire(bool first) {
         abs8(j - (MATRIX_HEIGHT - 1)) * 255 / (MATRIX_HEIGHT - 1)), 255);
       }
     }
+    FastLED.show();
+  }
+}
+
+uint16_t _plasmaShift = (random8(0, 5) * 32) + 64;
+uint16_t _plasmaTime = 0;
+const uint8_t _plasmaXfactor = 8;
+const uint8_t _plasmaYfactor = 8;
+void programPlasma(bool first) {
+  static unsigned long updateTimer = millis();
+
+  if (first || millis() - updateTimer > ANIMATION_UPDATE_MS) {
+    updateTimer = millis();
+
+    for (int16_t x = 0; x < MATRIX_WIDTH; x++) {
+      for (int16_t y = 0; y < MATRIX_HEIGHT; y++) {
+        int16_t r = sin16(_plasmaTime) / 256;
+        int16_t h = sin16(x * r * _plasmaXfactor + _plasmaTime) + cos16(y * (-r) * _plasmaYfactor + _plasmaTime) + sin16(y * x * (cos16(-_plasmaTime) / 256) / 2);
+        leds[XY(x, y)] = CHSV((uint8_t)((h / 256) + 128), 255, 255);
+      }
+    }
+    uint16_t oldPlasmaTime = _plasmaTime;
+    _plasmaTime += _plasmaShift;
+    if (oldPlasmaTime > _plasmaTime)
+    _plasmaShift = (random8(0, 5) * 32) + 64;
+
     FastLED.show();
   }
 }
@@ -579,6 +633,22 @@ void loopOTA() {
 
 // =---------------------------------------------------------------------------= Setup and Loop =--=
 
+void setupRandom() {
+  uint32_t seed;
+
+  // Random works best with a seed that can use 31 bits analogRead on a unconnected pin tends
+  // toward less than four bits
+  seed = analogRead(0);
+  delay(1);
+
+  for (int shifts = 3; shifts < 31; shifts += 3) {
+    seed ^= analogRead(0) << shifts;
+    delay(1);
+  }
+
+  randomSeed(seed);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -593,13 +663,17 @@ void setup() {
   setupPortal();
   setupOTA();
   setupClock();
+  setupRandom();
 }
 
 void loop() {
   loopPortal();
   loopOTA();
   if (WiFi.status() == WL_CONNECTED) {
-    if (!otaInProgress) loopDisplay();
+    if (!otaInProgress) {
+      surpriseAndDelight();
+      loopDisplay();
+    }
     loopClock();
   }
 }
