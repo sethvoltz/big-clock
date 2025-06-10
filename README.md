@@ -36,6 +36,12 @@ openssl rsa -in private.key -outform PEM -pubout \
 
 Now take the public key that is in the clipboard and replace the value of `OTA_PUBKEY` in `main.h`. Any new key pair will have to be flashed to the ESP8266 via serial first and manually reset once, then it can be uploaded OTA any number of times after. The code will automatically sign the outgoing packages, they will be verified on-device and applied if the code sign matches.
 
+Perform the upload with the following command:
+
+```bash
+pio run --target upload --environment ota
+```
+
 ## Enhancements
 
 While the current state of the project is sufficient to call this "done", there's always more that I'd like to do. Here's the current list which should also server as a reminder if I come back to this some time in the future looking for something to do.
@@ -47,3 +53,7 @@ While the current state of the project is sufficient to call this "done", there'
 - [ ] Config to allow spefifying NTP server
 - [ ] Config to allow setting colors
 - [ ] gCal integration? Flash n minutes before your next meeting
+
+## Known Issues
+
+- [ ] The portal page is borked. No idea why yet, it broke after lib updates.
