@@ -238,18 +238,19 @@ void syncLocalClock() {
 
 // =----------------------------------------------------------------------------------= Display =--=
 
+void clearDisplay() {
+  FastLED.clear();
+  FastLED.show();
+}
+
 void setupDisplay() {
   FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(LUMINANCE);
+  clearDisplay();
 }
 
 void loopDisplay(bool first = false) {
   (*renderFunc[currentProgram])(first);
-}
-
-void clearDisplay() {
-  FastLED.clear();
-  FastLED.show();
 }
 
 void setProgram(uint8_t program) {
@@ -287,6 +288,10 @@ void surpriseAndDelight() {
  * the middle, down to the bottom and across to the right again.
  */
 void writeProgressBar(uint8_t percentage, CRGB color) {
+  static uint8_t lastPercent = 255; // impossible value to force first update
+  if (percentage == lastPercent) return; // Only update if percent changed
+  lastPercent = percentage;
+
   FastLED.clear();
 
   uint8_t totalBars = sizeof(progressSegmentMap)/sizeof(progressSegmentMap[0]);
@@ -296,6 +301,7 @@ void writeProgressBar(uint8_t percentage, CRGB color) {
   }
 
   FastLED.show();
+  FastLED.delay(1); // Yield to WiFi/OTA stack safely
 }
 
 /**
@@ -307,6 +313,7 @@ void writeAllDigits(uint8_t character, CRGB color) {
     writeDigit(character, digit, color);
   }
   FastLED.show();
+  FastLED.delay(1); // Yield to WiFi/OTA stack safely
 }
 
 /**
